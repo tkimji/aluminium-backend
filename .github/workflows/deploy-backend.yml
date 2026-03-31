@@ -17,11 +17,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -36,7 +34,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          source: "dist/*,package.json,package-lock.json,prisma"
+          source: "dist/*,package.json,prisma"
           target: ${{ secrets.VPS_BACKEND_PATH }}
 
       - name: Install production deps & restart on VPS
@@ -48,6 +46,6 @@ jobs:
           port: 22
           script: |
             cd ${{ secrets.VPS_BACKEND_PATH }}
-            npm ci --omit=dev
+            npm install --omit=dev
             npx prisma generate
             pm2 restart aluminium-backend || pm2 start dist/server.js --name aluminium-backend
