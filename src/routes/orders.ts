@@ -14,11 +14,11 @@ const orderCreateSchema = z.object({
     .array(
       z.object({
         productId: z.string(),
-        colorId: z.string().optional(),
-        brandId: z.string().optional(),
-        width: z.coerce.number().optional(),
-        height: z.coerce.number().optional(),
-        thickness: z.coerce.number().optional(),
+        colorId: z.string().nullable().optional(),
+        brandId: z.string().nullable().optional(),
+        width: z.coerce.number().nullable().optional(),
+        height: z.coerce.number().nullable().optional(),
+        thickness: z.coerce.number().nullable().optional(),
         qty: z.coerce.number().int().min(1),
         unitPrice: z.coerce.number().min(0),
       })

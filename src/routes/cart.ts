@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRoleOrAdmin } from '../middleware/roles';
 
 const cartItemSchema = z.object({
-  projectId: z.string(),
+  projectId: z.string().optional(),
   productId: z.string(),
   formulaId: z.string().optional(),
   colorId: z.string().optional(),
@@ -85,23 +85,45 @@ cartRouter.post('/', async (req, res) => {
     return;
   }
 
-  const userId = req.auth?.userId;
-  const { projectId, ...itemData } = parsed.data;
+  const userId = req.auth?.userId!;
+  const { projectId: rawProjectId, ...itemData } = parsed.data;
 
-  // Verify project belongs to user
-  const project = await prisma.project.findUnique({
-    where: { id: projectId }
-  });
+  let project: { id: string; createdById: string } | null = null;
 
-  if (!project) {
-    res.status(404).json({ message: 'Project not found' });
-    return;
+  if (rawProjectId) {
+    // Use provided project
+    project = await prisma.project.findUnique({ where: { id: rawProjectId } });
+    if (!project) {
+      res.status(404).json({ message: 'Project not found' });
+      return;
+    }
+    if (req.auth?.role !== 'admin' && project.createdById !== userId) {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+  } else {
+    // Auto-find or create a default cart project for this user
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, phone: true }
+    });
+    const defaultName = 'ตะกร้าสินค้า';
+    project = await prisma.project.findFirst({
+      where: { createdById: userId, name: defaultName, status: 'draft' }
+    });
+    if (!project) {
+      project = await prisma.project.create({
+        data: {
+          name: defaultName,
+          customerName: user?.email ?? 'ลูกค้า',
+          phone: user?.phone ?? '0000000000',
+          createdById: userId,
+        }
+      });
+    }
   }
 
-  if (req.auth?.role !== 'admin' && project.createdById !== userId) {
-    res.status(403).json({ message: 'Forbidden' });
-    return;
-  }
+  const projectId = project.id;
 
   // Auto-fill formulaId from product if not provided
   let formulaId = itemData.formulaId ?? null;
