@@ -373,7 +373,7 @@ adminRouter.post('/users', async (req, res) => {
 
     const parsed = userSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Invalid data', errors: parsed.error.errors });
+      res.status(400).json({ message: 'Invalid data', errors: parsed.error.issues });
       return;
     }
 
@@ -394,11 +394,11 @@ adminRouter.post('/users', async (req, res) => {
     const user = await prisma.user.create({
       data: {
         email: parsed.data.email,
-        password: hashedPassword,
-        phone: parsed.data.phone,
+        passwordHash: hashedPassword,
+        phone: parsed.data.phone ?? null,
         role: parsed.data.role,
-        status: parsed.data.status
-      },
+        status: parsed.data.status as any
+      } as any,
       select: {
         id: true,
         email: true,
@@ -429,7 +429,7 @@ adminRouter.patch('/users/:id', async (req, res) => {
 
     const parsed = userUpdateSchema.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ message: 'Invalid data', errors: parsed.error.errors });
+      res.status(400).json({ message: 'Invalid data', errors: parsed.error.issues });
       return;
     }
 
@@ -455,11 +455,12 @@ adminRouter.patch('/users/:id', async (req, res) => {
     }
 
     const updateData: any = { ...parsed.data };
+    delete updateData.password;
 
     // Hash password if provided
     if (parsed.data.password) {
       const bcrypt = require('bcrypt');
-      updateData.password = await bcrypt.hash(parsed.data.password, 10);
+      updateData.passwordHash = await bcrypt.hash(parsed.data.password, 10);
     }
 
     const updated = await prisma.user.update({

@@ -203,9 +203,9 @@ adminWarehouseRouter.post('/stock-movements', async (req, res) => {
         productId,
         type,
         quantity,
-        reference,
-        note,
-        createdBy: req.auth?.userId
+        reference: reference ?? null,
+        note: note ?? null,
+        createdBy: req.auth?.userId ?? null,
       }
     });
 

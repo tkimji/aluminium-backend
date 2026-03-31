@@ -97,8 +97,9 @@ adminAluminiumRouter.post('/aluminium-items', upload.single('image'), async (req
   const created = await prisma.aluminiumItem.create({
     data: {
       ...parsed.data,
+      code: parsed.data.code ?? null,
       imagePath,
-    },
+    } as any,
   });
 
   res.status(201).json(created);
@@ -107,7 +108,7 @@ adminAluminiumRouter.post('/aluminium-items', upload.single('image'), async (req
 // Update aluminium item with optional image upload
 adminAluminiumRouter.patch('/aluminium-items/:id', upload.single('image'), async (req, res) => {
   const item = await prisma.aluminiumItem.findUnique({
-    where: { id: req.params.id },
+    where: { id: req.params.id as string },
   });
 
   if (!item) {
@@ -139,7 +140,7 @@ adminAluminiumRouter.patch('/aluminium-items/:id', upload.single('image'), async
   }
 
   const updated = await prisma.aluminiumItem.update({
-    where: { id: req.params.id },
+    where: { id: req.params.id as string },
     data: {
       ...cleanData,
       ...(imagePath !== item.imagePath && { imagePath }),

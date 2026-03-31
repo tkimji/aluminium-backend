@@ -79,15 +79,15 @@ adminFormulasRouter.post('/formulas', async (req, res) => {
         items: {
           create: items.map(item => ({
             aluminiumItemId: item.aluminiumItemId,
-            position: item.position,
+            position: item.position ?? null,
             lengthMm: item.lengthMm,
             qty: item.qty,
-            totalLengthMm: item.totalLengthMm,
-            angle: item.angle,
+            totalLengthMm: item.totalLengthMm ?? null,
+            angle: item.angle ?? null,
           }))
         }
       }),
-    },
+    } as any,
     include: { items: true },
   });
   res.status(201).json(created);
@@ -143,13 +143,13 @@ adminFormulasRouter.patch('/formulas/:id', async (req, res) => {
     
     await prisma.formulaItem.createMany({
       data: items.map(item => ({
-        formulaId: req.params.id,
+        formulaId: req.params.id as string,
         aluminiumItemId: item.aluminiumItemId,
-        position: item.position,
+        position: item.position ?? null,
         lengthMm: item.lengthMm,
         qty: item.qty,
-        totalLengthMm: item.totalLengthMm,
-        angle: item.angle,
+        totalLengthMm: item.totalLengthMm ?? null,
+        angle: item.angle ?? null,
       }))
     });
   }

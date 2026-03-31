@@ -252,7 +252,7 @@ ordersRouter.post('/:id/payments', upload.single('file'), async (req, res) => {
   const slipUrl = `/uploads/${req.file.filename}`;
 
   const order = await prisma.order.findUnique({
-    where: { id: req.params.id },
+    where: { id: req.params.id as string },
     include: { project: true },
   });
 
