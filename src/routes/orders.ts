@@ -168,6 +168,34 @@ ordersRouter.post('/', async (req, res) => {
   res.status(201).json(order);
 });
 
+ordersRouter.patch('/:id/:status', async (req, res) => {
+  if (req.auth?.role !== 'admin') {
+    res.status(403).json({ message: 'Forbidden: admin only' });
+    return;
+  }
+
+  const validStatuses = ['awaiting_payment', 'verifying', 'paid', 'preparing', 'shipped', 'completed', 'cancelled'];
+  const { status } = req.params;
+
+  if (!validStatuses.includes(status)) {
+    res.status(400).json({ message: 'Invalid status', validStatuses });
+    return;
+  }
+
+  const existing = await prisma.order.findUnique({ where: { id: req.params.id } });
+  if (!existing) {
+    res.status(404).json({ message: 'Order not found' });
+    return;
+  }
+
+  const updated = await prisma.order.update({
+    where: { id: req.params.id },
+    data: { status: status as any },
+  });
+
+  res.json({ message: 'Status updated', data: updated });
+});
+
 ordersRouter.get('/:id', async (req, res) => {
   const order = await prisma.order.findUnique({
     where: { id: req.params.id },
