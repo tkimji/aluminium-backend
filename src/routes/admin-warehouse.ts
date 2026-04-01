@@ -42,6 +42,76 @@ adminWarehouseRouter.get('/warehouses', async (_req, res) => {
   res.json({ data });
 });
 
+// GET /admin/warehouses/:warehouseId/products/:productId — inventory row + product (for admin product detail)
+adminWarehouseRouter.get('/warehouses/:warehouseId/products/:productId', async (req, res) => {
+  const warehouseId = req.params.warehouseId as string;
+  const productId = req.params.productId as string;
+
+  const warehouse = await prisma.warehouse.findUnique({ where: { id: warehouseId } });
+  if (!warehouse) {
+    res.status(404).json({ message: 'Warehouse not found' });
+    return;
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { productType: true, unit: true, brand: true },
+  });
+  if (!product) {
+    res.status(404).json({ message: 'Product not found' });
+    return;
+  }
+
+  const inventoryRow = await prisma.inventory.findFirst({
+    where: { warehouseId, productId },
+    include: {
+      product: {
+        include: { productType: true, unit: true, brand: true },
+      },
+    },
+  });
+
+  if (inventoryRow) {
+    res.json({ data: inventoryRow });
+    return;
+  }
+
+  res.json({
+    data: {
+      id: null,
+      warehouseId,
+      productId,
+      qtyOnHand: 0,
+      lowStockThreshold: 0,
+      product,
+    },
+  });
+});
+
+adminWarehouseRouter.get('/warehouses/:id', async (req, res) => {
+  const warehouse = await prisma.warehouse.findUnique({
+    where: { id: req.params.id as string },
+    include: {
+      inventory: {
+        include: { product: { include: { productType: true, unit: true, brand: true } } },
+        orderBy: { updatedAt: 'desc' },
+      },
+      stockMovements: {
+        include: { product: true },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      },
+    },
+  });
+
+  if (!warehouse) {
+    res.status(404).json({ message: 'Warehouse not found' });
+    return;
+  }
+
+  res.json({ data: warehouse });
+});
+
 adminWarehouseRouter.post('/warehouses', async (req, res) => {
   const parsed = warehouseSchema.safeParse(req.body);
   if (!parsed.success) {
