@@ -1,8 +1,7 @@
 name: Deploy Backend to VPS
 
+# Manual only: GitHub → Actions → this workflow → "Run workflow"
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -48,4 +47,5 @@ jobs:
             cd ${{ secrets.VPS_BACKEND_PATH }}
             npm install --omit=dev
             npx prisma generate
+            npx kill-port 3000 || true
             pm2 restart aluminium-backend || pm2 start dist/server.js --name aluminium-backend
