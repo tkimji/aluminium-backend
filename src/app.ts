@@ -25,6 +25,7 @@ import { receiptsRouter } from './routes/receipts';
 import { reportsRouter } from './routes/reports';
 import { subscriptionRouter } from './routes/subscriptions';
 import { uploadsRouter } from './routes/uploads';
+import { errorHandler } from './middleware/errorHandler';
 
 export const createApp = () => {
   const app = express();
@@ -64,8 +65,10 @@ export const createApp = () => {
   app.use('/reports', reportsRouter);
 
   app.use((req, res) => {
-    res.status(404).json({ message: 'Not found', path: req.path });
+    res.status(404).json({ success: false, message: 'Not found', data: { path: req.path } });
   });
+
+  app.use(errorHandler);
 
   return app;
 };

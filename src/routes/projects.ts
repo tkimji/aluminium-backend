@@ -13,6 +13,8 @@ const projectSchema = z.object({
   taxId: z.string().optional(),
   houseNo: z.string().optional(),
   moo: z.string().optional(),
+  building: z.string().optional(),
+  soi: z.string().optional(),
   road: z.string().optional(),
   province: z.string().optional(),
   district: z.string().optional(),
@@ -48,6 +50,14 @@ const itemSchema = z.object({
 
 export const projectsRouter = Router();
 projectsRouter.use(requireAuth, requireRoleOrAdmin('tech'));
+
+// ใช้ path สอง segment (/meta/glass-types) เพื่อไม่ให้ชนกับ GET /:id (id = "glass-types" → Project not found)
+projectsRouter.get('/meta/glass-types', async (_req, res) => {
+  const data = await prisma.glassType.findMany({
+    orderBy: { name: 'asc' },
+  });
+  res.json({ data });
+});
 
 projectsRouter.get('/', async (req, res) => {
   const role = req.auth?.role;

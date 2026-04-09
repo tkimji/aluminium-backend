@@ -51,3 +51,11 @@ productsRouter.get('/colors', async (req, res) => {
   });
   res.json({ data });
 });
+
+productsRouter.get('/glass-types', async (_req, res) => {
+  //glassType
+  const data = await prisma.glassType.findMany({
+    orderBy: { name: 'asc' },
+  });
+  res.json({ data });
+});

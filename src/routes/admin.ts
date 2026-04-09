@@ -322,7 +322,17 @@ adminRouter.get('/users', async (req, res) => {
     if (search && typeof search === 'string') {
       where.OR = [
         { email: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } }
+        { phone: { contains: search, mode: 'insensitive' } },
+        {
+          profile: {
+            is: {
+              OR: [
+                { firstName: { contains: search, mode: 'insensitive' } },
+                { lastName: { contains: search, mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
       ];
     }
 
@@ -336,7 +346,14 @@ adminRouter.get('/users', async (req, res) => {
           role: true,
           status: true,
           createdAt: true,
-          updatedAt: true
+          updatedAt: true,
+          profile: {
+            select: {
+              prefix: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -479,6 +496,66 @@ adminRouter.patch('/users/:id', async (req, res) => {
     res.json({ data: updated });
   } catch (error) {
     console.error('Error updating user:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+});
+
+// GET /admin/dashboard/stats?year=2026
+adminRouter.get('/dashboard/stats', async (req, res) => {
+  try {
+    const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+    const startOfYear = new Date(year, 0, 1);
+    const endOfYear = new Date(year + 1, 0, 1);
+
+    const [totalUsers, totalOrders, totalProducts, paidOrders] = await Promise.all([
+      prisma.user.count(),
+      prisma.order.count({
+        where: { createdAt: { gte: startOfYear, lt: endOfYear } },
+      }),
+      prisma.product.count(),
+      prisma.order.findMany({
+        where: {
+          createdAt: { gte: startOfYear, lt: endOfYear },
+          status: { in: ['paid', 'preparing', 'shipped', 'completed'] },
+        },
+        include: { items: { select: { totalPrice: true } } },
+      }),
+    ]);
+
+    const monthNames = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+
+    const monthlyTotals: number[] = new Array(12).fill(0);
+    let totalSales = 0;
+
+    for (const order of paidOrders) {
+      const orderTotal = order.items.reduce(
+        (sum: number, item: { totalPrice: unknown }) => sum + Number(item.totalPrice),
+        0,
+      );
+      totalSales += orderTotal;
+      const month = order.createdAt.getMonth();
+      monthlyTotals[month]! += orderTotal;
+    }
+
+    const monthlySales = monthNames.map((monthName, idx) => ({
+      monthName,
+      total: monthlyTotals[idx],
+    }));
+
+    res.json({
+      data: {
+        totalUsers,
+        totalOrders,
+        totalProducts,
+        totalSales,
+        monthlySales,
+      },
+    });
+  } catch (error) {
+    console.error('Error loading dashboard stats:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 });

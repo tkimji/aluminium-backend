@@ -395,6 +395,8 @@ model Project {
   taxId        String?     @map("tax_id")
   houseNo      String?     @map("house_no")
   moo          String?
+  building     String?
+  soi          String?
   road         String?
   province     String?
   district     String?

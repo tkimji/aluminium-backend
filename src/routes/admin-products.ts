@@ -2,8 +2,19 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import { prisma } from '../prisma';
+import { logger } from '../logger';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/roles';
+
+function bodyForLog(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== 'object') return {};
+  const o = { ...(body as Record<string, unknown>) };
+  const img = o.imageUrl;
+  if (typeof img === 'string' && img.length > 100) {
+    o.imageUrl = `[truncated ${img.length} chars]`;
+  }
+  return o;
+}
 
 const itemFormatEnum = z.enum(['MTO', 'PRESET', 'MATERIAL']);
 const priceSourceEnum = z.enum(['MANUAL', 'FORMULA']);
@@ -18,7 +29,10 @@ const productSchema = z.object({
   warehouseId: z.string().optional(),
   priceManual: z.coerce.number().optional(),
   priceSource: priceSourceEnum.optional(),
-  formulaId: z.string().optional(),
+  formulaId: z
+    .union([z.string(), z.null()])
+    .optional()
+    .transform((v) => (v === '' || v === null) ? null : v),
   status: z.enum(['active', 'inactive']).optional(),
   description: z.string().optional(),
   imageUrl: z.string().optional(),
@@ -84,7 +98,7 @@ adminProductsRouter.post('/products', async (req, res) => {
       ...(warehouseId && { warehouseId }),
       ...(priceManual !== undefined && { priceManual }),
       priceSource: priceSource ?? 'MANUAL',
-      ...(formulaId && { formulaId }),
+      formulaId: formulaId ?? null,
       ...(status && { status }),
       ...(description && { description }),
       ...(imageUrl && { imageUrl }),
@@ -95,20 +109,36 @@ adminProductsRouter.post('/products', async (req, res) => {
 });
 
 adminProductsRouter.patch('/products/:id', async (req, res) => {
+  const productId = req.params.id;
+  logger.info(
+    `PATCH /admin/products/${productId} rawBody=${JSON.stringify(bodyForLog(req.body))}`
+  );
+
   const parsed = productUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
+    logger.warn(
+      `PATCH /admin/products/${productId} validation failed ${JSON.stringify(parsed.error.flatten())}`
+    );
     res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
     return;
   }
 
-  const cleanData = Object.fromEntries(
+  const cleanData: Record<string, unknown> = Object.fromEntries(
     Object.entries(parsed.data).filter(([_, v]) => v !== undefined)
   );
 
+  // Empty-string FK → null so Prisma doesn't try to reference a non-existent row
+  if (cleanData.formulaId === '') cleanData.formulaId = null;
+
+  logger.info(
+    `PATCH /admin/products/${productId} applying keys=[${Object.keys(cleanData).join(', ')}] payload=${JSON.stringify(bodyForLog(cleanData))}`
+  );
+
   const updated = await prisma.product.update({
-    where: { id: req.params.id },
+    where: { id: productId },
     data: cleanData,
   });
 
+  logger.info(`PATCH /admin/products/${productId} ok sku=${updated.sku}`);
   res.json(updated);
 });
