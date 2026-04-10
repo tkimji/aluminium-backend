@@ -1,10 +1,8 @@
 import { Router } from 'express';
 
 import { prisma } from '../prisma';
-import { requireAuth } from '../middleware/auth';
 
 export const productsRouter = Router();
-productsRouter.use(requireAuth);
 
 productsRouter.get('/', async (req, res) => {
   const search = String(req.query.search ?? '').trim();

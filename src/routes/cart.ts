@@ -140,7 +140,28 @@ cartRouter.post('/', async (req, res) => {
     }
   }
 
-  // Create cart item
+  // If same product (+ color + brand) already exists in cart, increment qty
+  const existing = await prisma.projectItem.findFirst({
+    where: {
+      projectId,
+      productId: itemData.productId,
+      colorId: itemData.colorId ?? null,
+      brandId: itemData.brandId ?? null,
+      status: 'IN_CART',
+    },
+  });
+
+  if (existing) {
+    const updated = await prisma.projectItem.update({
+      where: { id: existing.id },
+      data: { quantity: (existing.quantity ?? 0) + itemData.quantity },
+      include: { product: true, brand: true, color: true, formula: true },
+    });
+    res.json(updated);
+    return;
+  }
+
+  // Create new cart item
   const cartItem = await prisma.projectItem.create({
     data: {
       projectId,

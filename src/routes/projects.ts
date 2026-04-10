@@ -49,6 +49,46 @@ const itemSchema = z.object({
 });
 
 export const projectsRouter = Router();
+
+// Public — no auth required
+projectsRouter.get('/showcase', async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 6, 20);
+  const data = await prisma.project.findMany({
+    where: { status: { in: ['done', 'ordered', 'paid'] } },
+    orderBy: { updatedAt: 'desc' },
+    take: limit,
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      status: true,
+      updatedAt: true,
+      items: {
+        take: 1,
+        select: {
+          product: { select: { name: true, imageUrl: true } },
+        },
+      },
+    },
+  });
+
+  const projects = data.map((p) => {
+    const firstProduct = p.items[0]?.product;
+    return {
+      id: p.id,
+      name: p.name,
+      code: p.code,
+      status: p.status,
+      updatedAt: p.updatedAt,
+      imageUrl: firstProduct?.imageUrl ?? null,
+      productName: firstProduct?.name ?? null,
+    };
+  });
+
+  res.json({ data: projects });
+});
+
+// All routes below require auth
 projectsRouter.use(requireAuth, requireRoleOrAdmin('tech'));
 
 // ใช้ path สอง segment (/meta/glass-types) เพื่อไม่ให้ชนกับ GET /:id (id = "glass-types" → Project not found)
