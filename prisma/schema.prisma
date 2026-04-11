@@ -444,12 +444,23 @@ model ProjectItem {
 }
 
 model Quotation {
-  id        String     @id @default(uuid())
-  projectId String     @map("project_id")
-  version   Int        @default(1)
-  status    QuoteStatus @default(draft)
-  createdAt DateTime   @default(now()) @map("created_at")
-  updatedAt DateTime   @updatedAt @map("updated_at")
+  id                    String      @id @default(uuid())
+  projectId             String      @map("project_id")
+  version               Int         @default(1)
+  status                QuoteStatus @default(draft)
+  notes                 String?
+  internalNotes         String?     @map("internal_notes")
+  discount              Decimal     @default(0)
+  vatEnabled            Boolean     @default(false) @map("vat_enabled")
+  withholdingTaxPercent Decimal     @default(0)     @map("withholding_tax_percent")
+  employeeName          String?     @map("employee_name")
+  referenceNo           String?     @map("reference_no")
+  description           String?
+  quotationDate         DateTime?   @map("quotation_date")
+  creditDays            Int         @default(0)     @map("credit_days")
+  dueDate               DateTime?   @map("due_date")
+  createdAt             DateTime    @default(now()) @map("created_at")
+  updatedAt             DateTime    @updatedAt      @map("updated_at")
 
   project Project          @relation(fields: [projectId], references: [id])
   items   QuotationItem[]

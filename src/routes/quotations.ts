@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import path from 'path';
+import PDFDocument from 'pdfkit';
 import { z } from 'zod';
 
 import { prisma } from '../prisma';
@@ -11,6 +13,17 @@ const quotationCreateSchema = z.object({
 
 const quotationUpdateSchema = z.object({
   status: z.enum(['draft', 'sent', 'approved', 'void']).optional(),
+  notes: z.string().optional(),
+  internalNotes: z.string().optional(),
+  discount: z.coerce.number().min(0).optional(),
+  vatEnabled: z.boolean().optional(),
+  withholdingTaxPercent: z.coerce.number().min(0).optional(),
+  employeeName: z.string().optional(),
+  referenceNo: z.string().optional(),
+  description: z.string().optional(),
+  quotationDate: z.string().optional(),
+  creditDays: z.coerce.number().int().min(0).optional(),
+  dueDate: z.string().optional(),
 });
 
 const itemSchema = z.object({
@@ -190,6 +203,177 @@ quotationsRouter.get('/:id', async (req, res) => {
   res.json(quotation);
 });
 
+// --------------- PDF download ---------------
+
+const FONT_DIR = path.join(__dirname, '..', 'fonts');
+const FONT_REGULAR = path.join(FONT_DIR, 'THSarabunNew.ttf');
+const FONT_BOLD = path.join(FONT_DIR, 'THSarabunNew-Bold.ttf');
+
+function fmtNumber(n: number | string): string {
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+quotationsRouter.get('/:id/pdf', async (req, res) => {
+  const quotation = await prisma.quotation.findUnique({
+    where: { id: req.params.id },
+    include: { items: true, project: true },
+  });
+
+  if (!quotation) {
+    res.status(404).json({ message: 'Quotation not found' });
+    return;
+  }
+
+  if (req.auth?.role !== 'admin' && quotation.project.createdById !== req.auth?.userId) {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+
+  const project = quotation.project;
+
+  // Quotation number
+  const d = new Date(quotation.createdAt);
+  const qtNo = `QT${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-v${String(quotation.version).padStart(2, '0')}`;
+
+  // Calculations
+  const totalAmount = quotation.items.reduce((s, i) => s + Number(i.total), 0);
+  const discount = Number((quotation as any).discount) || 0;
+  const discountAmt = (totalAmount * discount) / 100;
+  const afterDiscount = totalAmount - discountAmt;
+  const vatEnabled = (quotation as any).vatEnabled ?? false;
+  const vatAmt = vatEnabled ? (afterDiscount * 7) / 100 : 0;
+  const whTaxPct = Number((quotation as any).withholdingTaxPercent) || 0;
+  const whTaxAmt = whTaxPct > 0 ? (afterDiscount * whTaxPct) / 100 : 0;
+  const grandTotal = afterDiscount + vatAmt - whTaxAmt;
+
+  // Address
+  const addr = [
+    project.houseNo,
+    project.moo ? `หมู่ ${project.moo}` : '',
+    project.road ? `ถนน ${project.road}` : '',
+    project.subdistrict,
+    project.district,
+    project.province,
+    project.postalCode,
+  ].filter(Boolean).join(' ');
+
+  // Build PDF
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="quotation-${qtNo}.pdf"`);
+  doc.pipe(res);
+
+  doc.registerFont('Thai', FONT_REGULAR);
+  doc.registerFont('ThaiBold', FONT_BOLD);
+
+  const pageW = doc.page.width - 100; // usable width (margin 50 each side)
+
+  // ── Title ──
+  doc.font('ThaiBold').fontSize(22).text('ใบเสนอราคา', { align: 'center' });
+  doc.moveDown(0.3);
+  doc.font('Thai').fontSize(14).text(`เลขที่: ${qtNo}`, { align: 'center' });
+  doc.moveDown(1);
+
+  // ── Customer info ──
+  const infoStartY = doc.y;
+  doc.font('ThaiBold').fontSize(13).text('ข้อมูลลูกค้า', 50);
+  doc.moveDown(0.2);
+  doc.font('Thai').fontSize(12);
+  doc.text(`ชื่อ: ${project.customerName || '-'}`);
+  doc.text(`ที่อยู่: ${addr || '-'}`);
+  if (project.taxId) doc.text(`เลขประจำตัวผู้เสียภาษี: ${project.taxId}`);
+  doc.text(`โทร: ${project.phone || '-'}`);
+
+  // Right column – dates
+  const rightX = 350;
+  doc.font('Thai').fontSize(12);
+  doc.text(`วันที่: ${(quotation as any).quotationDate ? new Date((quotation as any).quotationDate).toLocaleDateString('th-TH') : d.toLocaleDateString('th-TH')}`, rightX, infoStartY + 18);
+  if ((quotation as any).creditDays) doc.text(`เครดิต: ${(quotation as any).creditDays} วัน`, rightX);
+  if ((quotation as any).dueDate) doc.text(`ครบกำหนด: ${new Date((quotation as any).dueDate).toLocaleDateString('th-TH')}`, rightX);
+  if ((quotation as any).employeeName) doc.text(`พนักงาน: ${(quotation as any).employeeName}`, rightX);
+
+  doc.y = Math.max(doc.y, infoStartY + 90);
+  doc.moveDown(1);
+
+  // ── Items table ──
+  const colX = [50, 80, 260, 330, 400, 480];
+  const colW = [30, 180, 70, 70, 80, 65];
+  const headers = ['ลำดับ', 'รายละเอียด', 'จำนวน', 'หน่วย', 'ราคา/หน่วย', 'รวม'];
+
+  // Table header
+  const tableTop = doc.y;
+  doc.rect(50, tableTop, pageW, 22).fill('#f1f5f9');
+  doc.fill('#000');
+  doc.font('ThaiBold').fontSize(11);
+  headers.forEach((h, i) => {
+    doc.text(h, colX[i]!, tableTop + 5, { width: colW[i], align: i >= 2 ? 'right' : 'left' });
+  });
+
+  let rowY = tableTop + 25;
+  doc.font('Thai').fontSize(11);
+
+  quotation.items.forEach((item, idx) => {
+    if (rowY > 720) {
+      doc.addPage();
+      rowY = 50;
+    }
+
+    // Alternate row bg
+    if (idx % 2 === 0) {
+      doc.rect(50, rowY - 2, pageW, 18).fill('#fafafa');
+      doc.fill('#000');
+    }
+
+    doc.text(String(idx + 1), colX[0]!, rowY, { width: colW[0], align: 'left' });
+    doc.text(item.description, colX[1]!, rowY, { width: colW[1], align: 'left' });
+    doc.text(String(item.qty), colX[2]!, rowY, { width: colW[2], align: 'right' });
+    doc.text(item.unit || '-', colX[3]!, rowY, { width: colW[3], align: 'right' });
+    doc.text(fmtNumber(Number(item.unitPrice)), colX[4]!, rowY, { width: colW[4], align: 'right' });
+    doc.text(fmtNumber(Number(item.total)), colX[5]!, rowY, { width: colW[5], align: 'right' });
+
+    rowY += 20;
+  });
+
+  // Table bottom line
+  doc.moveTo(50, rowY).lineTo(50 + pageW, rowY).lineWidth(0.5).stroke('#cbd5e1');
+  doc.y = rowY + 10;
+
+  // ── Summary ──
+  const sumX = 350;
+  const valX = 480;
+  const lineH = 18;
+
+  const summaryLine = (label: string, value: string, bold = false) => {
+    doc.font(bold ? 'ThaiBold' : 'Thai').fontSize(12);
+    doc.text(label, sumX, doc.y, { continued: false });
+    doc.text(value, valX, doc.y - lineH, { width: 65, align: 'right' });
+  };
+
+  doc.moveDown(0.5);
+  summaryLine('รวมเป็นเงิน', fmtNumber(totalAmount));
+  if (discount > 0) {
+    summaryLine(`ส่วนลด ${discount}%`, `-${fmtNumber(discountAmt)}`);
+    summaryLine('ราคาหลังหักส่วนลด', fmtNumber(afterDiscount));
+  }
+  if (vatEnabled) {
+    summaryLine('ภาษีมูลค่าเพิ่ม 7%', fmtNumber(vatAmt));
+  }
+  summaryLine('จำนวนเงินรวมทั้งสิ้น', fmtNumber(grandTotal), true);
+  if (whTaxPct > 0) {
+    summaryLine(`หักภาษี ณ ที่จ่าย ${whTaxPct}%`, `-${fmtNumber(whTaxAmt)}`);
+  }
+
+  // ── Notes ──
+  if ((quotation as any).notes) {
+    doc.moveDown(1.5);
+    doc.font('ThaiBold').fontSize(12).text('หมายเหตุ:', 50);
+    doc.font('Thai').fontSize(11).text((quotation as any).notes, 50, doc.y, { width: pageW });
+  }
+
+  doc.end();
+});
+
 quotationsRouter.patch('/:id', async (req, res) => {
   const parsed = quotationUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -212,9 +396,17 @@ quotationsRouter.patch('/:id', async (req, res) => {
     return;
   }
 
-  const cleanData = Object.fromEntries(
+  const cleanData: Record<string, unknown> = Object.fromEntries(
     Object.entries(parsed.data).filter(([_, v]) => v !== undefined)
   );
+
+  // Convert date strings to Date objects for Prisma
+  if (typeof cleanData.quotationDate === 'string') {
+    cleanData.quotationDate = new Date(cleanData.quotationDate);
+  }
+  if (typeof cleanData.dueDate === 'string') {
+    cleanData.dueDate = new Date(cleanData.dueDate);
+  }
 
   const updated = await prisma.quotation.update({
     where: { id: quotation.id },
