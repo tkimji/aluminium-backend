@@ -1,10 +1,29 @@
 import { Router } from 'express';
+import path from 'path';
+import fs from 'fs';
+import multer from 'multer';
 import { z } from 'zod';
 
 import { prisma } from '../prisma';
 import { logger } from '../logger';
 import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/roles';
+
+const uploadDir = path.join(process.cwd(), 'uploads', 'products');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+const productImageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${req.params.id}-${Date.now()}${ext}`);
+  },
+});
+
+const productImageUpload = multer({
+  storage: productImageStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 function bodyForLog(body: unknown): Record<string, unknown> {
   if (!body || typeof body !== 'object') return {};
@@ -130,15 +149,31 @@ adminProductsRouter.patch('/products/:id', async (req, res) => {
   // Empty-string FK → null so Prisma doesn't try to reference a non-existent row
   if (cleanData.formulaId === '') cleanData.formulaId = null;
 
-  logger.info(
-    `PATCH /admin/products/${productId} applying keys=[${Object.keys(cleanData).join(', ')}] payload=${JSON.stringify(bodyForLog(cleanData))}`
-  );
+  
 
   const updated = await prisma.product.update({
     where: { id: productId },
     data: cleanData,
   });
 
-  logger.info(`PATCH /admin/products/${productId} ok sku=${updated.sku}`);
+  //logger.info(`PATCH /admin/products/${productId} ok sku=${updated.sku}`);
   res.json(updated);
+});
+
+adminProductsRouter.post('/products/:id/image', productImageUpload.single('image'), async (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ message: 'File is required' });
+    return;
+  }
+
+  const productId = String(req.params.id);
+  const imageUrl = `/uploads/products/${req.file.filename}`;
+
+  const updated = await prisma.product.update({
+    where: { id: productId },
+    data: { imageUrl },
+  });
+
+  logger.info(`POST /admin/products/${productId}/image saved ${imageUrl}`);
+  res.json({ imageUrl: updated.imageUrl });
 });

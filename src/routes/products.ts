@@ -1,7 +1,7 @@
 import { Router } from 'express';
 
 import { prisma } from '../prisma';
-
+import { logger } from '../logger';
 export const productsRouter = Router();
 
 productsRouter.get('/', async (req, res) => {
@@ -16,6 +16,8 @@ productsRouter.get('/', async (req, res) => {
       { sku: { contains: search, mode: 'insensitive' } },
     ];
   }
+  where.AND=[{status: 'active'}];
+  //logger.info(`where: ${JSON.stringify(where)}`);
 
   const data = await prisma.product.findMany({
     where,
