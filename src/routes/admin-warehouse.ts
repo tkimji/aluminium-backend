@@ -30,6 +30,7 @@ const stockMovementSchema = z.object({
   quantity: z.coerce.number().int().min(1),
   reference: z.string().optional(),
   note: z.string().optional(),
+  lowStockThreshold: z.coerce.number().int().min(0).optional(),
 });
 
 export const adminWarehouseRouter = Router();
@@ -190,7 +191,7 @@ adminWarehouseRouter.post('/inventory/adjust', async (req, res) => {
           productId,
           warehouseId,
           qtyOnHand: qtyChange,
-          lowStockThreshold: lowStockThreshold ?? 5,
+          lowStockThreshold: lowStockThreshold ?? 10,
         },
       });
 
@@ -208,24 +209,44 @@ adminWarehouseRouter.get('/inventory/low-stock', async (_req, res) => {
   res.json({ data: filtered });
 });
 
-// GET /admin/warehouses/:id/inventory - Get products in specific warehouse
+// GET /admin/warehouses/:id/inventory - List products assigned to this warehouse
+// with inventory (qtyOnHand, lowStockThreshold) joined by productId + warehouseId.
 adminWarehouseRouter.get('/warehouses/:id/inventory', async (req, res) => {
   try {
-    const inventory = await prisma.inventory.findMany({
-      where: { warehouseId: req.params.id },
+    const warehouseId = req.params.id as string;
+
+    const products = await prisma.product.findMany({
+      where: { warehouseId },
       include: {
-        product: {
-          include: {
-            productType: true,
-            unit: true,
-            brand: true
-          }
-        }
+        productType: true,
+        unit: true,
+        brand: true,
+        inventory: { where: { warehouseId } },
       },
-      orderBy: { updatedAt: 'desc' }
+      orderBy: { updatedAt: 'desc' },
     });
 
-    res.json({ data: inventory });
+    const data = products.map((p) => {
+      const inv = p.inventory[0];
+      return {
+        id: inv?.id ?? null,
+        warehouseId,
+        productId: p.id,
+        qtyOnHand: inv?.qtyOnHand ?? 0,
+        lowStockThreshold: inv?.lowStockThreshold ?? 0,
+        updatedAt: inv?.updatedAt ?? p.updatedAt,
+        product: {
+          id: p.id,
+          sku: p.sku,
+          name: p.name,
+          productType: p.productType,
+          unit: p.unit,
+          brand: p.brand,
+        },
+      };
+    });
+
+    res.json({ data });
   } catch (error) {
     console.error('Error fetching warehouse inventory:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -241,7 +262,7 @@ adminWarehouseRouter.post('/stock-movements', async (req, res) => {
       return;
     }
 
-    const { warehouseId, productId, type, quantity, reference, note } = parsed.data;
+    const { warehouseId, productId, type, quantity, reference, note, lowStockThreshold } = parsed.data;
 
     // Verify warehouse exists
     const warehouse = await prisma.warehouse.findUnique({
@@ -287,13 +308,17 @@ adminWarehouseRouter.post('/stock-movements', async (req, res) => {
     const updated = existing
       ? await prisma.inventory.update({
           where: { id: existing.id },
-          data: { qtyOnHand: existing.qtyOnHand + qtyChange }
+          data: {
+            qtyOnHand: existing.qtyOnHand + qtyChange,
+            ...(lowStockThreshold !== undefined && { lowStockThreshold }),
+          }
         })
       : await prisma.inventory.create({
           data: {
             productId,
             warehouseId,
-            qtyOnHand: Math.max(0, qtyChange)
+            qtyOnHand: Math.max(0, qtyChange),
+            ...(lowStockThreshold !== undefined && { lowStockThreshold }),
           }
         });
 
