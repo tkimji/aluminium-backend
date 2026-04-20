@@ -56,4 +56,4 @@ jobs:
             pm2 stop aluminium-backend 2>/dev/null || true
             fuser -k ${{ env.APP_PORT }}/tcp 2>/dev/null || true
             npx --yes kill-port ${{ env.APP_PORT }} 2>/dev/null || true
-            pm2 restart ${{ env.PM2_APP_NAME }} || pm2 start dist/server.js --name ${{ env.PM2_APP_NAME }}
+            pm2 restart 0

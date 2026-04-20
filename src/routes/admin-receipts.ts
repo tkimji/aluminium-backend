@@ -59,7 +59,8 @@ router.get('/receipts', async (req, res) => {
         subtotal,
         vat,
         grandTotal,
-        paymentDate: order.etax?.createdAt || null,
+      //  paymentDate: order.etax?.createdAt || null,
+      paymentDate: order.updatedAt || null,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt
       };
