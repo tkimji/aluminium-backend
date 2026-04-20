@@ -352,6 +352,13 @@ adminRouter.get('/users', async (req, res) => {
               prefix: true,
               firstName: true,
               lastName: true,
+              houseNo: true,
+              moo: true,
+              road: true,
+              province: true,
+              district: true,
+              subdistrict: true,
+              postalCode: true,
             },
           },
         },
@@ -385,7 +392,17 @@ adminRouter.post('/users', async (req, res) => {
       password: z.string().min(6),
       phone: z.string().optional(),
       role: z.enum(['user', 'tech', 'admin']),
-      status: z.enum(['active', 'inactive', 'pending']).default('active')
+      status: z.enum(['active', 'inactive', 'pending']).default('active'),
+      prefix: z.string().optional(),
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
+      houseNo: z.string().optional(),
+      moo: z.string().optional(),
+      road: z.string().optional(),
+      province: z.string().optional(),
+      district: z.string().optional(),
+      subdistrict: z.string().optional(),
+      postalCode: z.string().optional(),
     });
 
     const parsed = userSchema.safeParse(req.body);
@@ -394,9 +411,8 @@ adminRouter.post('/users', async (req, res) => {
       return;
     }
 
-    // Check if email already exists
     const existingUser = await prisma.user.findUnique({
-      where: { email: parsed.data.email }
+      where: { email: parsed.data.email },
     });
 
     if (existingUser) {
@@ -404,7 +420,6 @@ adminRouter.post('/users', async (req, res) => {
       return;
     }
 
-    // Hash password (you should use bcrypt in production)
     const bcrypt = require('bcrypt');
     const hashedPassword = await bcrypt.hash(parsed.data.password, 10);
 
@@ -414,7 +429,21 @@ adminRouter.post('/users', async (req, res) => {
         passwordHash: hashedPassword,
         phone: parsed.data.phone ?? null,
         role: parsed.data.role,
-        status: parsed.data.status as any
+        status: parsed.data.status as any,
+        profile: {
+          create: {
+            prefix: parsed.data.prefix ?? null,
+            firstName: parsed.data.firstName ?? '',
+            lastName: parsed.data.lastName ?? '',
+            houseNo: parsed.data.houseNo ?? null,
+            moo: parsed.data.moo ?? null,
+            road: parsed.data.road ?? null,
+            province: parsed.data.province ?? null,
+            district: parsed.data.district ?? null,
+            subdistrict: parsed.data.subdistrict ?? null,
+            postalCode: parsed.data.postalCode ?? null,
+          },
+        },
       } as any,
       select: {
         id: true,
@@ -422,8 +451,9 @@ adminRouter.post('/users', async (req, res) => {
         phone: true,
         role: true,
         status: true,
-        createdAt: true
-      }
+        createdAt: true,
+        profile: true,
+      },
     });
 
     res.status(201).json({ data: user });
@@ -441,7 +471,17 @@ adminRouter.patch('/users/:id', async (req, res) => {
       password: z.string().min(6).optional(),
       phone: z.string().optional(),
       role: z.enum(['user', 'tech', 'admin']).optional(),
-      status: z.enum(['active', 'inactive', 'pending']).optional()
+      status: z.enum(['active', 'inactive', 'pending']).optional(),
+      prefix: z.string().optional(),
+      firstName: z.string().optional(),
+      lastName: z.string().optional(),
+      houseNo: z.string().optional(),
+      moo: z.string().optional(),
+      road: z.string().optional(),
+      province: z.string().optional(),
+      district: z.string().optional(),
+      subdistrict: z.string().optional(),
+      postalCode: z.string().optional(),
     });
 
     const parsed = userUpdateSchema.safeParse(req.body);
@@ -450,34 +490,72 @@ adminRouter.patch('/users/:id', async (req, res) => {
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.params.id }
-    });
-
+    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (!user) {
       res.status(404).json({ message: 'User not found' });
       return;
     }
 
-    // Check if email is being changed and already exists
     if (parsed.data.email && parsed.data.email !== user.email) {
       const existingUser = await prisma.user.findUnique({
-        where: { email: parsed.data.email }
+        where: { email: parsed.data.email },
       });
-
       if (existingUser) {
         res.status(400).json({ message: 'Email already exists' });
         return;
       }
     }
 
-    const updateData: any = { ...parsed.data };
-    delete updateData.password;
+    const {
+      password,
+      prefix, firstName, lastName,
+      houseNo, moo, road,
+      province, district, subdistrict, postalCode,
+      ...userFields
+    } = parsed.data;
 
-    // Hash password if provided
-    if (parsed.data.password) {
+    const updateData: any = { ...userFields };
+
+    if (password) {
       const bcrypt = require('bcrypt');
-      updateData.passwordHash = await bcrypt.hash(parsed.data.password, 10);
+      updateData.passwordHash = await bcrypt.hash(password, 10);
+    }
+
+    const touchedProfile =
+      prefix !== undefined || firstName !== undefined || lastName !== undefined ||
+      houseNo !== undefined || moo !== undefined || road !== undefined ||
+      province !== undefined || district !== undefined ||
+      subdistrict !== undefined || postalCode !== undefined;
+
+    if (touchedProfile) {
+      updateData.profile = {
+        upsert: {
+          create: {
+            prefix: prefix ?? null,
+            firstName: firstName ?? '',
+            lastName: lastName ?? '',
+            houseNo: houseNo ?? null,
+            moo: moo ?? null,
+            road: road ?? null,
+            province: province ?? null,
+            district: district ?? null,
+            subdistrict: subdistrict ?? null,
+            postalCode: postalCode ?? null,
+          },
+          update: {
+            ...(prefix !== undefined && { prefix: prefix ?? null }),
+            ...(firstName !== undefined && { firstName: firstName ?? '' }),
+            ...(lastName !== undefined && { lastName: lastName ?? '' }),
+            ...(houseNo !== undefined && { houseNo: houseNo ?? null }),
+            ...(moo !== undefined && { moo: moo ?? null }),
+            ...(road !== undefined && { road: road ?? null }),
+            ...(province !== undefined && { province: province ?? null }),
+            ...(district !== undefined && { district: district ?? null }),
+            ...(subdistrict !== undefined && { subdistrict: subdistrict ?? null }),
+            ...(postalCode !== undefined && { postalCode: postalCode ?? null }),
+          },
+        },
+      };
     }
 
     const updated = await prisma.user.update({
@@ -489,8 +567,9 @@ adminRouter.patch('/users/:id', async (req, res) => {
         phone: true,
         role: true,
         status: true,
-        updatedAt: true
-      }
+        updatedAt: true,
+        profile: true,
+      },
     });
 
     res.json({ data: updated });
