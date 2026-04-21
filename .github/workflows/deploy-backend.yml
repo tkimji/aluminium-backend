@@ -38,7 +38,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          source: "dist/*,package.json,prisma"
+          source: "dist/*,package.json,prisma,db/**/*.sql,scripts/**/*.sql,*.sql"
           target: ${{ secrets.VPS_BACKEND_PATH }}
 
       - name: Install deps, Prisma generate & restart Node API (PM2)
