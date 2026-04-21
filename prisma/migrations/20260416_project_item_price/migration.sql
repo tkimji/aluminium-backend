@@ -1,0 +1,1 @@
+ALTER TABLE "ProjectItem" ADD COLUMN "price" DECIMAL;

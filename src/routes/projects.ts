@@ -45,6 +45,7 @@ const itemSchema = z.object({
   glassHeight: z.coerce.number().int().optional(),
   glassThicknessMm: z.coerce.number().optional(),
   glassQuantity: z.coerce.number().int().optional(),
+  price: z.coerce.number().optional(),
   status: z.enum(['DRAFT', 'IN_CART', 'QUOTED']).optional(),
 });
 

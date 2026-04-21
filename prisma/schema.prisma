@@ -222,8 +222,6 @@ model AluminiumItem {
   imagePath String?       @map("image_path")
   status    ProductStatus @default(active)
   createdAt DateTime      @default(now()) @map("created_at")
-
-  formulaItems FormulaItem[]
 }
 
 model Brand {
@@ -337,11 +335,13 @@ model Product {
   unit        Unit        @relation(fields: [unitId], references: [id])
   brand       Brand?      @relation(fields: [brandId], references: [id])
   warehouse   Warehouse?  @relation(fields: [warehouseId], references: [id])
-  formula     Formula?    @relation(fields: [formulaId], references: [id])
+  formula     Formula?    @relation("ProductFormula", fields: [formulaId], references: [id])
+  mtoFormulas Formula[]   @relation("FormulaMtoProduct")
   orderItems  OrderItem[]
   inventory   Inventory[]
   stockMovements StockMovement[]
   projectItems ProjectItem[]
+  formulaItems FormulaItem[]
 }
 
 model Formula {
@@ -361,10 +361,14 @@ model Formula {
   glassWidthOffset   Int?     @default(100) @map("glass_width_offset")
   glassHeightOffset  Int?     @default(100) @map("glass_height_offset")
   modelPath          String?  @map("model_path")
+  productPrice       Decimal? @map("product_price")
+  totalPrice         Decimal? @map("total_price")
+  productId          String?  @map("product_id")
   createdAt          DateTime @default(now()) @map("created_at")
 
   items          FormulaItem[]
-  products       Product[]
+  products       Product[]       @relation("ProductFormula")
+  product        Product?        @relation("FormulaMtoProduct", fields: [productId], references: [id])
   projectItems   ProjectItem[]
   glassType      GlassType?      @relation(fields: [glassTypeId], references: [id])
   glassThickness GlassThickness? @relation(fields: [glassThicknessId], references: [id])
@@ -373,17 +377,17 @@ model Formula {
 }
 
 model FormulaItem {
-  id              String  @id @default(uuid())
-  formulaId       String  @map("formula_id")
-  aluminiumItemId String  @map("aluminium_item_id")
-  position        String?
-  lengthMm        Int     @map("length_mm")
-  qty             Int
-  totalLengthMm   Int?    @map("total_length_mm")
-  angle           String?
+  id            String  @id @default(uuid())
+  formulaId     String  @map("formula_id")
+  productId     String  @map("product_id")
+  position      String?
+  lengthMm      Int     @map("length_mm")
+  qty           Int
+  totalLengthMm Int?    @map("total_length_mm")
+  angle         String?
 
-  formula       Formula       @relation(fields: [formulaId], references: [id])
-  aluminiumItem AluminiumItem @relation(fields: [aluminiumItemId], references: [id])
+  formula Formula @relation(fields: [formulaId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
 }
 
 model Project {
@@ -432,6 +436,7 @@ model ProjectItem {
   glassHeight          Int?     @map("glass_height")
   glassThicknessMm     Float?   @map("glass_thickness_mm")
   glassQuantity        Int?     @map("glass_quantity")
+  price                Decimal?
   status               ProjectItemStatus @default(DRAFT)
 
   project              Project          @relation(fields: [projectId], references: [id])

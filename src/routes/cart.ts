@@ -23,6 +23,7 @@ const cartItemSchema = z.object({
   glassHeight: z.coerce.number().int().optional(),
   glassThicknessMm: z.coerce.number().optional(),
   glassQuantity: z.coerce.number().int().optional(),
+  price: z.coerce.number().optional(),
 });
 
 export const cartRouter = Router();
@@ -73,8 +74,9 @@ cartRouter.get('/', async (req, res) => {
   // Add calculated unitPrice to each item
   const itemsWithPrice = cartItems.map(item => ({
     ...item,
-    unitPrice: item.product?.priceManual ? parseFloat(item.product.priceManual.toString()) : 0
-    // TODO: Calculate from formula if priceSource is FORMULA
+    unitPrice: item.price != null
+      ? parseFloat(item.price.toString())
+      : (item.product?.priceManual ? parseFloat(item.product.priceManual.toString()) : 0)
   }));
 
   res.json({ data: itemsWithPrice });
@@ -181,7 +183,8 @@ cartRouter.post('/', async (req, res) => {
       glassWidth: itemData.glassWidth ?? null,
       glassHeight: itemData.glassHeight ?? null,
       glassThicknessMm: itemData.glassThicknessMm ?? null,
-      glassQuantity: itemData.glassQuantity ?? null
+      glassQuantity: itemData.glassQuantity ?? null,
+      price: itemData.price ?? null
     },
     include: {
       product: true,

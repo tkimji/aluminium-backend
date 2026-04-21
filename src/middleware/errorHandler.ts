@@ -16,7 +16,14 @@ export const errorHandler = (err: unknown, _req: Request, res: Response, _next: 
     return;
   }
 
-  logger.error('Unexpected error', { err });
+  const anyErr = err as any;
+  logger.error('Unexpected error', {
+    name: anyErr?.name,
+    code: anyErr?.code,
+    message: anyErr?.message,
+    meta: anyErr?.meta,
+    stack: anyErr?.stack,
+  });
   res.status(500).json({
     success: false,
     message: 'Internal server error',

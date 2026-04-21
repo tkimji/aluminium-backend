@@ -6,7 +6,7 @@ import { requireAuth } from '../middleware/auth';
 import { requireRole } from '../middleware/roles';
 
 const formulaItemSchema = z.object({
-  aluminiumItemId: z.string().min(1),
+  productId: z.string().min(1),
   position: z.string().optional(),
   lengthMm: z.coerce.number().int().min(1),
   qty: z.coerce.number().int().min(1),
@@ -28,6 +28,9 @@ const formulaSchema = z.object({
   glassTypeId: z.string().optional(),
   glassThicknessId: z.string().optional(),
   modelPath: z.string().optional(),
+  productPrice: z.coerce.number().optional(),
+  totalPrice: z.coerce.number().optional(),
+  productId: z.string().optional(),
   items: z.array(formulaItemSchema).optional(),
 });
 
@@ -78,7 +81,7 @@ adminFormulasRouter.post('/formulas', async (req, res) => {
       ...(items && items.length > 0 && {
         items: {
           create: items.map(item => ({
-            aluminiumItemId: item.aluminiumItemId,
+            productId: item.productId,
             position: item.position ?? null,
             lengthMm: item.lengthMm,
             qty: item.qty,
@@ -96,10 +99,10 @@ adminFormulasRouter.post('/formulas', async (req, res) => {
 adminFormulasRouter.get('/formulas/:id', async (req, res) => {
   const formula = await prisma.formula.findUnique({
     where: { id: req.params.id },
-    include: { 
+    include: {
       items: {
         include: {
-          aluminiumItem: true
+          product: true
         }
       },
       productType: true,
@@ -144,7 +147,7 @@ adminFormulasRouter.patch('/formulas/:id', async (req, res) => {
     await prisma.formulaItem.createMany({
       data: items.map(item => ({
         formulaId: req.params.id as string,
-        aluminiumItemId: item.aluminiumItemId,
+        productId: item.productId,
         position: item.position ?? null,
         lengthMm: item.lengthMm,
         qty: item.qty,
