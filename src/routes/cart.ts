@@ -37,12 +37,19 @@ cartRouter.get('/', async (req, res) => {
     return;
   }
 
+  const isAdmin = req.auth?.role === 'admin';
+
   const cartItems = await prisma.projectItem.findMany({
     where: {
       status: 'IN_CART',
-      project: {
-        createdById: userId
-      }
+      project: isAdmin
+        ? {
+            OR: [
+              { createdById: userId },
+              { createdBy: { role: { in: ['tech', 'user'] } } }
+            ]
+          }
+        : { createdById: userId }
     },
     include: {
       product: true,
