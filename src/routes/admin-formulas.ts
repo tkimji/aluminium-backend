@@ -45,6 +45,27 @@ const formulaUpdateSchema = formulaSchema.partial().extend({
 export const adminFormulasRouter = Router();
 adminFormulasRouter.use(requireAuth, requireRole(['admin', 'tech']));
 
+/** Keep `Product.formula_id` in sync with `Formula.product_id` (MTO catalog product ↔ formula). */
+async function syncLinkedProductFormulaId(formulaId: string): Promise<void> {
+  const f = await prisma.formula.findUnique({
+    where: { id: formulaId },
+    select: { productId: true },
+  });
+  if (!f) return;
+
+  await prisma.product.updateMany({
+    where: { formulaId },
+    data: { formulaId: null },
+  });
+
+  if (f.productId) {
+    await prisma.product.update({
+      where: { id: f.productId },
+      data: { formulaId },
+    });
+  }
+}
+
 /** After formula save: push catalog price to the linked MTO product (if any). */
 async function syncLinkedProductPriceManual(formulaId: string): Promise<void> {
   const f = await prisma.formula.findUnique({
@@ -120,9 +141,10 @@ adminFormulasRouter.post('/formulas', async (req, res) => {
   });
 
   try {
+    await syncLinkedProductFormulaId(created.id);
     await syncLinkedProductPriceManual(created.id);
   } catch (err) {
-    console.error('syncLinkedProductPriceManual after formula create:', err);
+    console.error('sync linked product after formula create:', err);
   }
 
   res.status(201).json(created);
@@ -196,9 +218,10 @@ adminFormulasRouter.patch('/formulas/:id', async (req, res) => {
   });
 
   try {
+    await syncLinkedProductFormulaId(req.params.id);
     await syncLinkedProductPriceManual(req.params.id);
   } catch (err) {
-    console.error('syncLinkedProductPriceManual after formula update:', err);
+    console.error('sync linked product after formula update:', err);
   }
 
   res.json(result);
