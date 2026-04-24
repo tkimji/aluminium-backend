@@ -38,8 +38,8 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          # DB/ is the dump folder in this repo (case-sensitive on Linux); db/** keeps lowercase clones
-          source: "dist/*,package.json,prisma,DB/**/*.sql,db/**/*.sql,scripts/**/*.sql,*.sql"
+          # DB/ dumps (case-sensitive on Linux); db/** for lowercase clones; .backup alongside .sql
+          source: "dist/*,package.json,prisma,DB/**/*.sql,DB/**/*.backup,db/**/*.sql,db/**/*.backup,scripts/**/*.sql,scripts/**/*.backup,*.sql,*.backup"
           target: ${{ secrets.VPS_BACKEND_PATH }}
 
       - name: Install deps, Prisma generate & restart Node API (PM2)
