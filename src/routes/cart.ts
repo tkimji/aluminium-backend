@@ -3,7 +3,6 @@ import { z } from 'zod';
 
 import { prisma } from '../prisma';
 import { requireAuth } from '../middleware/auth';
-import { requireRoleOrAdmin } from '../middleware/roles';
 
 const cartItemSchema = z.object({
   projectId: z.string().optional(),
@@ -27,7 +26,14 @@ const cartItemSchema = z.object({
 });
 
 export const cartRouter = Router();
-cartRouter.use(requireAuth, requireRoleOrAdmin('tech'));
+cartRouter.use(requireAuth, (req, res, next) => {
+  const role = req.auth?.role;
+  if (!role || !['admin', 'tech', 'user'].includes(role)) {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+  next();
+});
 
 // Get all cart items for current user
 cartRouter.get('/', async (req, res) => {

@@ -1,12 +1,18 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { z } from 'zod';
 
 import { authController } from '../controllers/auth.controller';
 import { prisma } from '../prisma';
 import { requireAuth } from '../middleware/auth';
 import { validateBody } from '../middleware/validateRequest';
 import { loginSchema, registerSchema } from '../validation/auth.validation';
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(6),
+});
 
 const jwtSecret = () => {
   const secret = process.env.JWT_SECRET;
@@ -101,8 +107,57 @@ authRouter.get('/me', requireAuth, async (req, res) => {
       id: user.id,
       role: user.role,
       email: user.email,
+      phone: user.phone,
       status: user.status,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
       profile: user.profile,
     },
+  });
+});
+
+authRouter.post('/change-password', requireAuth, async (req, res) => {
+  const parsed = changePasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid payload',
+      data: { errors: parsed.error.flatten() },
+    });
+    return;
+  }
+
+  const userId = req.auth?.userId;
+  if (!userId) {
+    res.status(401).json({ success: false, message: 'Unauthorized', data: null });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    res.status(404).json({ success: false, message: 'User not found', data: null });
+    return;
+  }
+
+  const match = await bcrypt.compare(parsed.data.currentPassword, user.passwordHash);
+  if (!match) {
+    res.status(400).json({
+      success: false,
+      message: 'รหัสผ่านปัจจุบันไม่ถูกต้อง',
+      data: null,
+    });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash },
+  });
+
+  res.json({
+    success: true,
+    message: 'เปลี่ยนรหัสผ่านสำเร็จ',
+    data: { updated: true },
   });
 });

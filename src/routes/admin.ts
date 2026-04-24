@@ -300,6 +300,90 @@ adminRouter.post('/payments/:id/reject', async (req, res) => {
   res.json(updated);
 });
 
+const orderPaymentStatusSchema = z.object({
+  status: z.enum(['pending', 'approved', 'rejected']),
+  note: z.string().optional(),
+});
+
+/** Set order payment slip status (รอตรวจสอบ / ชำระแล้ว / ยกเลิก) and align order status when needed. */
+adminRouter.patch('/payments/:id/status', async (req, res) => {
+  const parsed = orderPaymentStatusSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ message: 'Invalid payload', errors: parsed.error.flatten() });
+    return;
+  }
+
+  const payment = await prisma.payment.findUnique({
+    where: { id: req.params.id },
+    include: { order: true },
+  });
+
+  if (!payment) {
+    res.status(404).json({ message: 'Payment not found' });
+    return;
+  }
+
+  const { status } = parsed.data;
+  const now = new Date();
+  const userId = req.auth?.userId;
+
+  if (status === 'approved') {
+    const paymentUpdateData: any = {
+      status: 'approved',
+      approvedAt: now,
+    };
+    if (userId) paymentUpdateData.approvedBy = userId;
+
+    const [updatedPayment] = await prisma.$transaction([
+      prisma.payment.update({
+        where: { id: payment.id },
+        data: paymentUpdateData,
+      }),
+      prisma.order.update({
+        where: { id: payment.orderId },
+        data: { status: 'paid' },
+      }),
+    ]);
+
+    res.json(updatedPayment);
+    return;
+  }
+
+  if (status === 'rejected') {
+    const updateData: any = {
+      status: 'rejected',
+      approvedAt: now,
+    };
+    if (userId) updateData.approvedBy = userId;
+
+    const updated = await prisma.payment.update({
+      where: { id: payment.id },
+      data: updateData,
+    });
+
+    res.json(updated);
+    return;
+  }
+
+  // pending — รอตรวจสอบการชำระ (สลิปรอตรวจ, คำสั่งซื้อกลับไป verifying)
+  const [updatedPayment] = await prisma.$transaction([
+    prisma.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: 'pending',
+        approvedBy: null,
+        approvedAt: null,
+      },
+    }),
+    prisma.order.update({
+      where: { id: payment.orderId },
+      data: { status: 'verifying' },
+    }),
+  ]);
+
+  res.json(updatedPayment);
+});
+
 // GET /admin/users - Get all users
 adminRouter.get('/users', async (req, res) => {
   try {

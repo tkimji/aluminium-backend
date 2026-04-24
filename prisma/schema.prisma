@@ -130,10 +130,11 @@ model User {
   approvalsBy  AdminApproval[]  @relation("approval_admin")
   subscriptions Subscription[]
   subscriptionPayments SubscriptionPayment[]
-  projects     Project[]
-  notifications Notification[]
-  payments     Payment[]
-  stockMovements StockMovement[]
+  projects        Project[]
+  customerOrders  Order[]          @relation("OrderCustomer")
+  notifications   Notification[]
+  payments        Payment[]
+  stockMovements  StockMovement[]
 }
 
 model UserProfile {
@@ -487,14 +488,28 @@ model Order {
   id        String      @id @default(uuid())
   code      String
   projectId String?     @map("project_id")
+  // End-customer web order without project
+  customerUserId String? @map("customer_user_id")
   status    OrderStatus @default(awaiting_payment)
   createdAt DateTime    @default(now()) @map("created_at")
   updatedAt DateTime    @updatedAt @map("updated_at")
 
-  project   Project?  @relation(fields: [projectId], references: [id])
-  items     OrderItem[]
-  payments  Payment[]
-  etax      EtaxRequest?
+  // Shipping snapshot when projectId is null (mirrors Project address fields)
+  shipHouseNo     String? @map("ship_house_no")
+  shipMoo         String? @map("ship_moo")
+  shipBuilding    String? @map("ship_building")
+  shipSoi         String? @map("ship_soi")
+  shipRoad        String? @map("ship_road")
+  shipProvince    String? @map("ship_province")
+  shipDistrict    String? @map("ship_district")
+  shipSubdistrict String? @map("ship_subdistrict")
+  shipPostalCode  String? @map("ship_postal_code")
+
+  project      Project? @relation(fields: [projectId], references: [id])
+  customerUser User?    @relation("OrderCustomer", fields: [customerUserId], references: [id])
+  items        OrderItem[]
+  payments     Payment[]
+  etax         EtaxRequest?
 }
 
 model OrderItem {

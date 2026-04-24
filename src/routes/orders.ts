@@ -7,9 +7,23 @@ import fs from 'fs';
 import { prisma } from '../prisma';
 import { requireAuth } from '../middleware/auth';
 
+const shippingSchema = z.object({
+  houseNo: z.string().optional(),
+  moo: z.string().optional(),
+  building: z.string().optional(),
+  soi: z.string().optional(),
+  road: z.string().optional(),
+  province: z.string().optional(),
+  district: z.string().optional(),
+  subdistrict: z.string().optional(),
+  postalCode: z.string().optional(),
+});
+
 const orderCreateSchema = z.object({
   projectId: z.string().optional(),
   code: z.string().optional(),
+  /** Required when projectId is omitted (e.g. end-user checkout without a project). */
+  shipping: shippingSchema.optional(),
   items: z
     .array(
       z.object({
@@ -71,10 +85,12 @@ ordersRouter.get('/', async (req, res) => {
   const role = req.auth?.role;
   const userId = req.auth?.userId;
 
-  const where: any = {};
-  if (role !== 'admin' && userId) {
-    where.project = { createdById: userId };
-  }
+  const where: any =
+    role !== 'admin' && userId
+      ? {
+          OR: [{ project: { createdById: userId } }, { customerUserId: userId }],
+        }
+      : {};
 
   const data = await prisma.order.findMany({
     where,
@@ -96,12 +112,27 @@ ordersRouter.post('/', async (req, res) => {
     return;
   }
 
-  if (req.auth?.role !== 'admin' && req.auth?.role !== 'tech') {
+  if (req.auth?.role !== 'admin' && req.auth?.role !== 'tech' && req.auth?.role !== 'user') {
     res.status(403).json({ message: 'Forbidden' });
     return;
   }
 
   const payload = parsed.data;
+
+  if (!payload.projectId) {
+    const s = payload.shipping;
+    const hasCore =
+      s &&
+      (s.province ?? '').trim() &&
+      (s.district ?? '').trim() &&
+      (s.subdistrict ?? '').trim();
+    if (!hasCore) {
+      res.status(400).json({
+        message: 'shipping (province, district, subdistrict) is required when projectId is omitted',
+      });
+      return;
+    }
+  }
 
   if (payload.projectId) {
     const project = await prisma.project.findUnique({ where: { id: payload.projectId } });
@@ -134,7 +165,21 @@ ordersRouter.post('/', async (req, res) => {
       })),
     },
   };
-  if (payload.projectId) orderData.projectId = payload.projectId;
+  if (payload.projectId) {
+    orderData.projectId = payload.projectId;
+  } else if (req.auth?.userId) {
+    orderData.customerUserId = req.auth.userId;
+    const sh = payload.shipping!;
+    orderData.shipHouseNo = sh.houseNo ?? null;
+    orderData.shipMoo = sh.moo ?? null;
+    orderData.shipBuilding = sh.building ?? null;
+    orderData.shipSoi = sh.soi ?? null;
+    orderData.shipRoad = sh.road ?? null;
+    orderData.shipProvince = sh.province ?? null;
+    orderData.shipDistrict = sh.district ?? null;
+    orderData.shipSubdistrict = sh.subdistrict ?? null;
+    orderData.shipPostalCode = sh.postalCode ?? null;
+  }
   
   // Add e-tax if provided
   if (payload.etax) {
@@ -199,23 +244,24 @@ ordersRouter.patch('/:id/:status', async (req, res) => {
 ordersRouter.get('/:id', async (req, res) => {
   const order = await prisma.order.findUnique({
     where: { id: req.params.id },
-    include: { 
+    include: {
       items: {
         include: {
           product: {
             include: {
               formula: true,
               brand: true,
-              productType: true
-            }
+              productType: true,
+            },
           },
           color: true,
-          brand: true
-        }
-      }, 
-      project: true, 
-      payments: true, 
-      etax: true 
+          brand: true,
+        },
+      },
+      project: true,
+      customerUser: { select: { id: true, email: true, phone: true } },
+      payments: true,
+      etax: true,
     },
   });
 
@@ -230,15 +276,20 @@ ordersRouter.get('/:id', async (req, res) => {
     return;
   }
 
-  // For tech/user: must own the project (if order has project)
-  if (order.project && order.project.createdById !== req.auth?.userId) {
-    res.status(403).json({ message: 'Forbidden' });
-    return;
+  // For tech/user: must own the project, or be the customer on a project-less order
+  if (req.auth?.role !== 'admin') {
+    const uid = req.auth?.userId;
+    if (order.project) {
+      if (order.project.createdById !== uid) {
+        res.status(403).json({ message: 'Forbidden' });
+        return;
+      }
+    } else if (order.customerUserId !== uid) {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
   }
 
-  // If order has no project, allow any authenticated user to view their own orders
-  // (This might need refinement based on your business logic)
-  
   res.json(order);
 });
 
@@ -264,12 +315,15 @@ ordersRouter.post('/:id/payments', upload.single('file'), async (req, res) => {
   // Admin can upload payment for any order
   if (req.auth?.role === 'admin') {
     // Allow admin
-  } else if (order.project && order.project.createdById !== req.auth?.userId) {
-    // If order has project, must be the owner
+  } else if (order.project) {
+    if (order.project.createdById !== req.auth?.userId) {
+      res.status(403).json({ message: 'Forbidden' });
+      return;
+    }
+  } else if (order.customerUserId !== req.auth?.userId) {
     res.status(403).json({ message: 'Forbidden' });
     return;
   }
-  // If order has no project, allow any authenticated user
 
   const payment = await prisma.payment.create({
     data: {
