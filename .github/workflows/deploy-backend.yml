@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 env:
-  PM2_APP_NAME: node-api
+  PM2_APP_NAME: Aluminium-api
   APP_PORT: "3000"
 
 jobs:
@@ -53,6 +53,7 @@ jobs:
           script: |
             cd ${{ secrets.VPS_BACKEND_PATH }}
             npm install --omit=dev
+            npx prisma migrate deploy
             npx prisma generate
 
             pm2 stop ${{ env.PM2_APP_NAME }} 2>/dev/null || true

@@ -21,6 +21,8 @@ const shippingSchema = z.object({
 
 const orderCreateSchema = z.object({
   projectId: z.string().optional(),
+  /** Cart line IDs to mark IN_CART → IN_ORDER (e.g. user checkout without linking order.projectId). */
+  cartProjectItemIds: z.array(z.string().min(1)).optional(),
   code: z.string().optional(),
   /** Required when projectId is omitted (e.g. end-user checkout without a project). */
   shipping: shippingSchema.optional(),
@@ -207,6 +209,24 @@ ordersRouter.post('/', async (req, res) => {
     await prisma.project.update({
       where: { id: payload.projectId },
       data: { status: 'ordered' },
+    });
+  }
+
+  const userId = req.auth?.userId;
+  const role = req.auth?.role;
+  if (payload.cartProjectItemIds?.length && userId && role !== 'admin') {
+    await prisma.projectItem.updateMany({
+      where: {
+        id: { in: payload.cartProjectItemIds },
+        status: 'IN_CART',
+        project: { createdById: userId },
+      },
+      data: { status: 'IN_ORDER' },
+    });
+  } else if (payload.projectId) {
+    await prisma.projectItem.updateMany({
+      where: { projectId: payload.projectId, status: 'IN_CART' },
+      data: { status: 'IN_ORDER' },
     });
   }
 

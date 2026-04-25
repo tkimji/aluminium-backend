@@ -46,7 +46,7 @@ const itemSchema = z.object({
   glassThicknessMm: z.coerce.number().optional(),
   glassQuantity: z.coerce.number().int().optional(),
   price: z.coerce.number().optional(),
-  status: z.enum(['DRAFT', 'IN_CART', 'QUOTED']).optional(),
+  status: z.enum(['DRAFT', 'IN_CART', 'IN_ORDER', 'QUOTED']).optional(),
 });
 
 export const projectsRouter = Router();
