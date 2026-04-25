@@ -9,6 +9,19 @@ const router = Router();
 router.use(requireAuth);
 router.use(requireRole(['admin', 'technician']));
 
+function buildCustomerName(order: {
+  project?: { customerName?: string | null } | null;
+  customerUser?: {
+    email?: string | null;
+    profile?: { firstName?: string | null; lastName?: string | null } | null;
+  } | null;
+}): string {
+  const first = order.customerUser?.profile?.firstName?.trim() ?? '';
+  const last = order.customerUser?.profile?.lastName?.trim() ?? '';
+  const full = [first, last].filter(Boolean).join(' ').trim();
+  return full || order.project?.customerName || order.customerUser?.email || '-';
+}
+
 // GET /admin/receipts - List all receipts (orders with payment info)
 router.get('/receipts', async (req, res) => {
   try {
@@ -36,6 +49,16 @@ router.get('/receipts', async (req, res) => {
         where,
         include: {
           project: true,
+          customerUser: {
+            select: {
+              id: true,
+              email: true,
+              phone: true,
+              profile: {
+                select: { prefix: true, firstName: true, lastName: true }
+              }
+            }
+          },
           items: true,
           etax: true
         },
@@ -54,7 +77,7 @@ router.get('/receipts', async (req, res) => {
       return {
         id: order.id,
         code: order.code,
-        customerName: order.project?.customerName || '-',
+        customerName: buildCustomerName(order),
         status: order.status,
         subtotal,
         vat,
@@ -89,6 +112,16 @@ router.get('/receipts/:id', async (req, res) => {
       include: {
         items: { include: { product: true } },
         project: true,
+        customerUser: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            profile: {
+              select: { prefix: true, firstName: true, lastName: true }
+            }
+          }
+        },
         etax: true
       }
     });
@@ -111,8 +144,8 @@ router.get('/receipts/:id', async (req, res) => {
           createdAt: order.createdAt
         },
         customer: {
-          name: order.project?.customerName ?? '-',
-          phone: order.project?.phone ?? '-',
+          name: buildCustomerName(order),
+          phone: order.project?.phone ?? order.customerUser?.phone ?? '-',
           address: {
             houseNo: order.project?.houseNo ?? '',
             moo: order.project?.moo ?? '',

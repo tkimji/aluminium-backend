@@ -83,6 +83,18 @@ const upload = multer({
 export const ordersRouter = Router();
 ordersRouter.use(requireAuth);
 
+function buildCustomerName(order: {
+  customerUser?: {
+    email?: string | null;
+    profile?: { firstName?: string | null; lastName?: string | null } | null;
+  } | null;
+}): string | null {
+  const first = order.customerUser?.profile?.firstName?.trim() ?? '';
+  const last = order.customerUser?.profile?.lastName?.trim() ?? '';
+  const full = [first, last].filter(Boolean).join(' ').trim();
+  return full || order.customerUser?.email || null;
+}
+
 ordersRouter.get('/', async (req, res) => {
   const role = req.auth?.role;
   const userId = req.auth?.userId;
@@ -97,14 +109,30 @@ ordersRouter.get('/', async (req, res) => {
   const data = await prisma.order.findMany({
     where,
     orderBy: { createdAt: 'desc' },
-    include: { 
+    include: {
       items: true,
       project: true,
-      payments: true
+      payments: true,
+      customerUser: {
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          status: true,
+          profile: {
+            select: { prefix: true, firstName: true, lastName: true },
+          },
+        },
+      },
     },
   });
 
-  res.json({ data });
+  const dataWithCustomerName = data.map((order) => ({
+    ...order,
+    customerName: buildCustomerName(order),
+  }));
+
+  res.json({ data: dataWithCustomerName });
 });
 
 ordersRouter.post('/', async (req, res) => {
@@ -221,12 +249,12 @@ ordersRouter.post('/', async (req, res) => {
         status: 'IN_CART',
         project: { createdById: userId },
       },
-      data: { status: 'IN_ORDER' },
+      data: { status: 'IN_ORDER' as any },
     });
   } else if (payload.projectId) {
     await prisma.projectItem.updateMany({
       where: { projectId: payload.projectId, status: 'IN_CART' },
-      data: { status: 'IN_ORDER' },
+      data: { status: 'IN_ORDER' as any },
     });
   }
 
@@ -279,7 +307,17 @@ ordersRouter.get('/:id', async (req, res) => {
         },
       },
       project: true,
-      customerUser: { select: { id: true, email: true, phone: true } },
+      customerUser: {
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          status: true,
+          profile: {
+            select: { prefix: true, firstName: true, lastName: true },
+          },
+        },
+      },
       payments: true,
       etax: true,
     },
@@ -290,9 +328,14 @@ ordersRouter.get('/:id', async (req, res) => {
     return;
   }
 
+  const orderWithCustomerName = {
+    ...order,
+    customerName: buildCustomerName(order),
+  };
+
   // Admin can view any order
   if (req.auth?.role === 'admin') {
-    res.json(order);
+    res.json(orderWithCustomerName);
     return;
   }
 
@@ -310,7 +353,7 @@ ordersRouter.get('/:id', async (req, res) => {
     }
   }
 
-  res.json(order);
+  res.json(orderWithCustomerName);
 });
 
 ordersRouter.post('/:id/payments', upload.single('file'), async (req, res) => {
