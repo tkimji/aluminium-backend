@@ -37,6 +37,20 @@ const itemSchema = z.object({
 export const quotationsRouter = Router();
 quotationsRouter.use(requireAuth, requireRoleOrAdmin('tech'));
 
+function buildQuotationCustomerName(q: {
+  project?: {
+    createdBy?: {
+      email?: string | null;
+      profile?: { firstName?: string | null; lastName?: string | null } | null;
+    } | null;
+  } | null;
+}): string {
+  const first = q.project?.createdBy?.profile?.firstName?.trim() ?? '';
+  const last = q.project?.createdBy?.profile?.lastName?.trim() ?? '';
+  const full = [first, last].filter(Boolean).join(' ').trim();
+  return full || q.project?.createdBy?.email || '-';
+}
+
 quotationsRouter.get('/', async (req, res) => {
   const role = req.auth?.role;
   const userId = req.auth?.userId;
@@ -78,9 +92,27 @@ quotationsRouter.get('/', async (req, res) => {
     }
 
     if (customerName && typeof customerName === 'string') {
-      where.project.OR.push({
-        customerName: { contains: customerName, mode: 'insensitive' }
-      });
+      where.project.OR.push(
+        {
+          createdBy: {
+            profile: {
+              firstName: { contains: customerName, mode: 'insensitive' }
+            }
+          }
+        },
+        {
+          createdBy: {
+            profile: {
+              lastName: { contains: customerName, mode: 'insensitive' }
+            }
+          }
+        },
+        {
+          createdBy: {
+            email: { contains: customerName, mode: 'insensitive' }
+          }
+        }
+      );
     }
   }
 
@@ -94,8 +126,15 @@ quotationsRouter.get('/', async (req, res) => {
         select: {
           id: true,
           name: true,
-          customerName: true,
-          phone: true
+          phone: true,
+          createdBy: {
+            select: {
+              email: true,
+              profile: {
+                select: { firstName: true, lastName: true }
+              }
+            }
+          }
         }
       }
     },
@@ -104,8 +143,13 @@ quotationsRouter.get('/', async (req, res) => {
     take: limitNum
   });
 
+  const dataWithCustomerName = data.map((q) => ({
+    ...q,
+    customerName: buildQuotationCustomerName(q),
+  }));
+
   res.json({ 
-    data,
+    data: dataWithCustomerName,
     pagination: {
       total,
       page: pageNum,
@@ -187,7 +231,26 @@ quotationsRouter.post('/', async (req, res) => {
 quotationsRouter.get('/:id', async (req, res) => {
   const quotation = await prisma.quotation.findUnique({
     where: { id: req.params.id },
-    include: { items: true, project: true },
+    include: {
+      items: true,
+      project: {
+        select: {
+          id: true,
+          name: true,
+          customerName: true,
+          phone: true,
+          createdById: true,
+          createdBy: {
+            select: {
+              email: true,
+              profile: {
+                select: { firstName: true, lastName: true },
+              },
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!quotation) {
@@ -200,7 +263,10 @@ quotationsRouter.get('/:id', async (req, res) => {
     return;
   }
 
-  res.json(quotation);
+  res.json({
+    ...quotation,
+    customerName: buildQuotationCustomerName(quotation),
+  });
 });
 
 // --------------- PDF download ---------------
