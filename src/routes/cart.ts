@@ -23,6 +23,8 @@ const cartItemSchema = z.object({
   glassThicknessMm: z.coerce.number().optional(),
   glassQuantity: z.coerce.number().int().optional(),
   price: z.coerce.number().optional(),
+  /** When true, never merge into an existing IN_CART row (same product/color/brand). */
+  skipCartDedupe: z.boolean().optional(),
 });
 
 export const cartRouter = Router();
@@ -104,7 +106,7 @@ cartRouter.post('/', async (req, res) => {
   }
 
   const userId = req.auth?.userId!;
-  const { projectId: rawProjectId, ...itemData } = parsed.data;
+  const { projectId: rawProjectId, skipCartDedupe, ...itemData } = parsed.data;
 
   let project: { id: string; createdById: string } | null = null;
 
@@ -155,25 +157,27 @@ cartRouter.post('/', async (req, res) => {
     }
   }
 
-  // If same product (+ color + brand) already exists in cart, increment qty
-  const existing = await prisma.projectItem.findFirst({
-    where: {
-      projectId,
-      productId: itemData.productId,
-      colorId: itemData.colorId ?? null,
-      brandId: itemData.brandId ?? null,
-      status: 'IN_CART',
-    },
-  });
-
-  if (existing) {
-    const updated = await prisma.projectItem.update({
-      where: { id: existing.id },
-      data: { quantity: (existing.quantity ?? 0) + itemData.quantity },
-      include: { product: true, brand: true, color: true, formula: true },
+  // If same product (+ color + brand) already exists in cart, increment qty (unless skipped)
+  if (!skipCartDedupe) {
+    const existing = await prisma.projectItem.findFirst({
+      where: {
+        projectId,
+        productId: itemData.productId,
+        colorId: itemData.colorId ?? null,
+        brandId: itemData.brandId ?? null,
+        status: 'IN_CART',
+      },
     });
-    res.json(updated);
-    return;
+
+    if (existing) {
+      const updated = await prisma.projectItem.update({
+        where: { id: existing.id },
+        data: { quantity: (existing.quantity ?? 0) + itemData.quantity },
+        include: { product: true, brand: true, color: true, formula: true },
+      });
+      res.json(updated);
+      return;
+    }
   }
 
   // Create new cart item

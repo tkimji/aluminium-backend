@@ -344,6 +344,7 @@ model Product {
   stockMovements StockMovement[]
   projectItems ProjectItem[]
   formulaItems FormulaItem[]
+  quotationItems QuotationItem[]
 }
 
 model Formula {
@@ -476,6 +477,7 @@ model Quotation {
 model QuotationItem {
   id          String   @id @default(uuid())
   quotationId String   @map("quotation_id")
+  productId   String?  @map("product_id")
   description String
   qty         Int
   unit        String?
@@ -483,6 +485,7 @@ model QuotationItem {
   total       Decimal
 
   quotation Quotation @relation(fields: [quotationId], references: [id])
+  product   Product?  @relation(fields: [productId], references: [id])
 }
 
 model Order {

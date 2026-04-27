@@ -27,6 +27,7 @@ const quotationUpdateSchema = z.object({
 });
 
 const itemSchema = z.object({
+  productId: z.string().optional(),
   description: z.string().min(1),
   qty: z.coerce.number().int().min(1),
   unit: z.string().optional(),
@@ -212,6 +213,7 @@ quotationsRouter.post('/', async (req, res) => {
             const total = Number(unitPrice) * qty;
             
             return {
+              productId: item.productId ?? undefined,
               description: `${item.product?.name || 'สินค้า'} (${item.width || 0}x${item.height || 0} มม.)`,
               qty: qty,
               unit: item.unit || 'ชุด',
@@ -294,6 +296,9 @@ quotationsRouter.get('/:id/items', async (req, res) => {
   const items = await prisma.quotationItem.findMany({
     where: { quotationId: quotation.id },
     orderBy: { id: 'asc' },
+    include: {
+      product: { select: { id: true, name: true } },
+    },
   });
 
   res.json({ data: items });
