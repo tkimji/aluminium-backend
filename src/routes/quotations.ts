@@ -56,7 +56,7 @@ quotationsRouter.get('/', async (req, res) => {
   const userId = req.auth?.userId;
 
   // Filter parameters
-  const { projectName, customerName, status, page, limit } = req.query;
+  const { projectName, customerName, status, page, limit, projectId } = req.query;
 
   // Pagination
   const pageNum = page && typeof page === 'string' ? parseInt(page, 10) : 1;
@@ -65,6 +65,10 @@ quotationsRouter.get('/', async (req, res) => {
 
   // Build where clause
   const where: any = {};
+
+  if (projectId && typeof projectId === 'string') {
+    where.projectId = projectId;
+  }
 
   // Role-based filtering
   if (role !== 'admin' && userId) {
@@ -192,15 +196,15 @@ quotationsRouter.post('/', async (req, res) => {
     orderBy: { version: 'desc' },
   });
 
-  // Create quotation with items from project
+  const draftProjectItems = project.items.filter((item) => item.status === 'DRAFT');
+
+  // Create quotation with items from project (DRAFT lines only)
   const quotation = await prisma.quotation.create({
     data: {
       projectId: project.id,
       version: latest ? latest.version + 1 : 1,
       items: {
-        create: project.items
-          // Include all items regardless of status for quotation
-          .map(item => {
+        create: draftProjectItems.map((item) => {
             const unitPrice = item.price != null
               ? Number(item.price)
               : Number(item.product?.priceManual || 0);
