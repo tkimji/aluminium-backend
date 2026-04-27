@@ -201,7 +201,9 @@ quotationsRouter.post('/', async (req, res) => {
         create: project.items
           // Include all items regardless of status for quotation
           .map(item => {
-            const unitPrice = item.product?.priceManual || 0;
+            const unitPrice = item.price != null
+              ? Number(item.price)
+              : Number(item.product?.priceManual || 0);
             const qty = item.quantity || 1;
             const total = Number(unitPrice) * qty;
             
@@ -267,6 +269,30 @@ quotationsRouter.get('/:id', async (req, res) => {
     ...quotation,
     customerName: buildQuotationCustomerName(quotation),
   });
+});
+
+quotationsRouter.get('/:id/items', async (req, res) => {
+  const quotation = await prisma.quotation.findUnique({
+    where: { id: req.params.id },
+    include: { project: true },
+  });
+
+  if (!quotation) {
+    res.status(404).json({ message: 'Quotation not found' });
+    return;
+  }
+
+  if (req.auth?.role !== 'admin' && quotation.project.createdById !== req.auth?.userId) {
+    res.status(403).json({ message: 'Forbidden' });
+    return;
+  }
+
+  const items = await prisma.quotationItem.findMany({
+    where: { quotationId: quotation.id },
+    orderBy: { id: 'asc' },
+  });
+
+  res.json({ data: items });
 });
 
 // --------------- PDF download ---------------
