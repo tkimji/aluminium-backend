@@ -247,6 +247,16 @@ quotationsRouter.get('/:id', async (req, res) => {
           name: true,
           customerName: true,
           phone: true,
+          taxId: true,
+          houseNo: true,
+          moo: true,
+          building: true,
+          soi: true,
+          road: true,
+          province: true,
+          district: true,
+          subdistrict: true,
+          postalCode: true,
           createdById: true,
           createdBy: {
             select: {
