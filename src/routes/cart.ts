@@ -25,6 +25,8 @@ const cartItemSchema = z.object({
   price: z.coerce.number().optional(),
   /** When true, never merge into an existing IN_CART row (same product/color/brand). */
   skipCartDedupe: z.boolean().optional(),
+  /** Admin only: create/find default cart project for this user instead of the caller. Ignored when projectId is set. */
+  cartOwnerUserId: z.string().uuid().optional(),
 });
 
 export const cartRouter = Router();
@@ -106,7 +108,7 @@ cartRouter.post('/', async (req, res) => {
   }
 
   const userId = req.auth?.userId!;
-  const { projectId: rawProjectId, skipCartDedupe, ...itemData } = parsed.data;
+  const { projectId: rawProjectId, skipCartDedupe, cartOwnerUserId, ...itemData } = parsed.data;
 
   let project: { id: string; createdById: string } | null = null;
 
@@ -122,14 +124,31 @@ cartRouter.post('/', async (req, res) => {
       return;
     }
   } else {
-    // Auto-find or create a default cart project for this user
+    let cartUserId = userId;
+    if (cartOwnerUserId) {
+      if (req.auth?.role !== 'admin') {
+        res.status(403).json({ message: 'Forbidden' });
+        return;
+      }
+      const owner = await prisma.user.findUnique({
+        where: { id: cartOwnerUserId },
+        select: { id: true },
+      });
+      if (!owner) {
+        res.status(404).json({ message: 'Cart owner user not found' });
+        return;
+      }
+      cartUserId = cartOwnerUserId;
+    }
+
+    // Auto-find or create a default cart project for cartUserId
     const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true, email: true, phone: true }
+      where: { id: cartUserId },
+      select: { id: true, email: true, phone: true },
     });
     const defaultName = 'ตะกร้าสินค้า';
     project = await prisma.project.findFirst({
-      where: { createdById: userId, name: defaultName, status: 'draft' }
+      where: { createdById: cartUserId, name: defaultName, status: 'draft' },
     });
     if (!project) {
       project = await prisma.project.create({
@@ -137,8 +156,8 @@ cartRouter.post('/', async (req, res) => {
           name: defaultName,
           customerName: user?.email ?? 'ลูกค้า',
           phone: user?.phone ?? '0000000000',
-          createdById: userId,
-        }
+          createdById: cartUserId,
+        },
       });
     }
   }
