@@ -131,6 +131,7 @@ quotationsRouter.get('/', async (req, res) => {
         select: {
           id: true,
           name: true,
+          customerName: true,
           phone: true,
           createdBy: {
             select: {
