@@ -409,6 +409,7 @@ model Project {
   district     String?
   subdistrict  String?
   postalCode   String?     @map("postal_code")
+  link         String?
   status       ProjectStatus @default(draft)
   createdById  String      @map("created_by_id")
   createdAt    DateTime    @default(now()) @map("created_at")

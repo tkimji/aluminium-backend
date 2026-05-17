@@ -59,3 +59,27 @@ productsRouter.get('/glass-types', async (_req, res) => {
   });
   res.json({ data });
 });
+
+productsRouter.get('/:id', async (req, res) => {
+  const product = await prisma.product.findFirst({
+    where: { id: req.params.id, status: 'active' },
+    include: {
+      brand: true,
+      productType: true,
+      unit: true,
+      formula: {
+        include: {
+          glassType: true,
+          glassThickness: true,
+        },
+      },
+    },
+  });
+
+  if (!product) {
+    res.status(404).json({ message: 'Product not found' });
+    return;
+  }
+
+  res.json({ data: product });
+});

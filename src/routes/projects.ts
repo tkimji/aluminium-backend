@@ -20,6 +20,7 @@ const projectSchema = z.object({
   district: z.string().optional(),
   subdistrict: z.string().optional(),
   postalCode: z.string().optional(),
+  link: z.string().max(255).optional(),
 });
 
 const projectUpdateSchema = projectSchema.partial().extend({
@@ -51,8 +52,10 @@ const itemSchema = z.object({
 
 export const projectsRouter = Router();
 
-// Public — no auth required
-projectsRouter.get('/showcase', async (req, res) => {
+/** Public showcase routes — mounted before auth so they never hit requireAuth */
+const showcasePublicRouter = Router();
+
+showcasePublicRouter.get('/', async (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 6, 20);
   const data = await prisma.project.findMany({
     where: { status: { in: ['done', 'ordered', 'paid'] } },
@@ -62,6 +65,7 @@ projectsRouter.get('/showcase', async (req, res) => {
       id: true,
       name: true,
       code: true,
+      link: true,
       status: true,
       updatedAt: true,
       items: {
@@ -79,6 +83,7 @@ projectsRouter.get('/showcase', async (req, res) => {
       id: p.id,
       name: p.name,
       code: p.code,
+      link: p.link ?? null,
       status: p.status,
       updatedAt: p.updatedAt,
       imageUrl: firstProduct?.imageUrl ?? null,
@@ -88,6 +93,85 @@ projectsRouter.get('/showcase', async (req, res) => {
 
   res.json({ data: projects });
 });
+
+showcasePublicRouter.get('/:id', async (req, res) => {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: req.params.id,
+      status: { in: ['done', 'ordered', 'paid'] },
+    },
+    include: {
+      items: {
+        include: {
+          product: {
+            select: { id: true, name: true, description: true, imageUrl: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    res.status(404).json({ message: 'Project not found' });
+    return;
+  }
+
+  const imageUrls: string[] = [];
+  const seenImages = new Set<string>();
+  const products: { name: string; description: string }[] = [];
+  const seenProducts = new Set<string>();
+
+  for (const item of project.items) {
+    const product = item.product;
+    if (!product) continue;
+
+    if (product.imageUrl && !seenImages.has(product.imageUrl)) {
+      seenImages.add(product.imageUrl);
+      imageUrls.push(product.imageUrl);
+    }
+
+    if (!seenProducts.has(product.id)) {
+      seenProducts.add(product.id);
+      products.push({
+        name: product.name,
+        description: product.description?.trim() || '',
+      });
+    }
+  }
+
+  const aboutFromProducts = products
+    .map((p) => p.description)
+    .filter(Boolean)
+    .join(' ');
+
+  const productsText = products.length
+    ? products
+        .map((p) =>
+          p.description
+            ? `${p.name} — ${p.description}`
+            : p.name
+        )
+        .join(' ')
+    : 'Products used in this project will appear here.';
+
+  res.json({
+    data: {
+      id: project.id,
+      title: (project.code || project.name).toUpperCase(),
+      name: project.name,
+      code: project.code,
+      link: project.link ?? null,
+      about:
+        aboutFromProducts ||
+        `Discover ${project.name} — innovative aluminium design crafted for modern architecture and lasting performance.`,
+      images: imageUrls,
+      productsText,
+      products,
+    },
+  });
+});
+
+projectsRouter.use('/showcase', showcasePublicRouter);
 
 // All routes below require auth
 projectsRouter.use(requireAuth, requireRoleOrAdmin('tech'));

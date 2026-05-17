@@ -369,6 +369,66 @@ const paths = {
       responses: { '201': { description: 'Created' } },
     },
   },
+  '/admin/products/import/template': {
+    get: {
+      tags: ['Products'],
+      summary: 'Download Excel import template (.xlsx)',
+      security: [{ bearerAuth: [] }],
+      responses: {
+        '200': {
+          description: 'Template workbook with Products + Instructions sheets',
+          content: {
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+              schema: { type: 'string', format: 'binary' },
+            },
+          },
+        },
+      },
+    },
+  },
+  '/admin/products/import': {
+    post: {
+      tags: ['Products'],
+      summary: 'Import products from Excel (.xlsx)',
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              properties: {
+                file: {
+                  type: 'string',
+                  format: 'binary',
+                  description: 'First sheet: rows with sku, name, itemFormat, codes or UUIDs for types/units, etc.',
+                },
+              },
+              required: ['file'],
+            },
+          },
+        },
+      },
+      responses: {
+        '200': {
+          description: 'createdIds and per-row errors',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  success: { type: 'boolean' },
+                  message: { type: 'string' },
+                  data: { type: 'object' },
+                },
+              },
+            },
+          },
+        },
+        '400': { description: 'Missing or unreadable file' },
+      },
+    },
+  },
   '/admin/products/{id}': {
     patch: {
       tags: ['Products'],
